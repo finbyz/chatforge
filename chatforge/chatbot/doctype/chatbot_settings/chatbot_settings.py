@@ -100,8 +100,8 @@ class ChatbotSettings(Document):
     
     def setup_chatbot(self): 
         self.create_knowledgebase_if_not_exist()
-        
         self.create_agent_if_not_exist()
+        self.save()
         
     def create_knowledgebase_if_not_exist(self):
         if self.knowledge_base:
