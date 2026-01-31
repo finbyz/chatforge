@@ -9,5 +9,16 @@
   "module": "Chatbot",
   "name": "Create Chatbot Lead",
   "tool_function": null
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "AI Tool",
+  "from_package": "",
+  "is_custom": 1,
+  "modified": "2026-01-31 13:18:04.326474",
+  "module": "Chatbot",
+  "name": "Extract content from url",
+  "tool_function": null
  }
 ]

@@ -256,7 +256,7 @@ fixtures = [
     {
         "dt": "AI Tool",
         "filters": [
-            ["name", "=", "Create Chatbot Lead"]
+            ["name", "in", ["Create Chatbot Lead", "Extract content from url"]]
         ],
     }
 ]
