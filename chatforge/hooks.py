@@ -1,9 +1,9 @@
 app_name = "chatforge"
-app_title = "Chatforge"
-app_publisher = "Mukesh Variyani"
-app_description = "AI chatbot"
+app_title = "Chatbot Saas"
+app_publisher = "finbyz"
+app_description = "A multi tenent chatbot SaaS"
 app_email = "info@finbyz.tech"
-app_license = "gpl-3.0"
+app_license = "mit"
 
 # Apps
 # ------------------
@@ -15,7 +15,7 @@ app_license = "gpl-3.0"
 # 	{
 # 		"name": "chatforge",
 # 		"logo": "/assets/chatforge/logo.png",
-# 		"title": "Chatforge",
+# 		"title": "Chatbot Saas",
 # 		"route": "/chatforge",
 # 		"has_permission": "chatforge.api.permission.has_app_permission"
 # 	}
@@ -29,8 +29,9 @@ app_license = "gpl-3.0"
 # app_include_js = "/assets/chatforge/js/chatforge.js"
 
 # include js, css files in header of web template
-# web_include_css = "/assets/chatforge/css/chatforge.css"
-# web_include_js = "/assets/chatforge/js/chatforge.js"
+# DISABLED: For SaaS, widget loads via embed code on external sites, not auto-included
+# web_include_css = "/assets/chatforge/css/saas_widget.css"
+# web_include_js = "/assets/chatforge/js/saas_widget.js"
 
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "chatforge/public/scss/website"
@@ -148,23 +149,25 @@ app_license = "gpl-3.0"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"chatforge.tasks.all"
-# 	],
-# 	"daily": [
-# 		"chatforge.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"chatforge.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"chatforge.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"chatforge.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+    "cron": {
+        "*/5 * * * *": [
+            "chatforge.api.sync_leads_to_webhooks"
+        ]
+    },
+    # "daily": [
+    #     "chatforge.tasks.daily"
+    # ],
+    # "hourly": [
+    #     "chatforge.tasks.hourly"
+    # ],
+    # "weekly": [
+    #     "chatforge.tasks.weekly"
+    # ],
+    # "monthly": [
+    #     "chatforge.tasks.monthly"
+    # ],
+}
 
 # Testing
 # -------

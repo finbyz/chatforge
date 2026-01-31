@@ -1,0 +1,107 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "field:session_id",
+    "creation": "2025-01-20 10:10:00",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "session_id",
+        "bot_settings",
+        "visitor_fingerprint",
+        "status",
+        "column_break_1",
+        "started_at",
+        "ended_at",
+        "section_break_messages",
+        "messages",
+        "metadata"
+    ],
+    "fields": [
+        {
+            "fieldname": "session_id",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Session ID",
+            "reqd": 1,
+            "unique": 1
+        },
+        {
+            "fieldname": "bot_settings",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Chatbot Settings",
+            "options": "Chatbot Settings",
+            "reqd": 1
+        },
+        {
+            "fieldname": "visitor_fingerprint",
+            "fieldtype": "Data",
+            "label": "Visitor Fingerprint"
+        },
+        {
+            "default": "Active",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "label": "Status",
+            "options": "Active\nClosed\nLead Converted"
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "Now",
+            "fieldname": "started_at",
+            "fieldtype": "Datetime",
+            "label": "Started At"
+        },
+        {
+            "fieldname": "ended_at",
+            "fieldtype": "Datetime",
+            "label": "Ended At"
+        },
+        {
+            "fieldname": "section_break_messages",
+            "fieldtype": "Section Break",
+            "label": "Messages"
+        },
+        {
+            "fieldname": "messages",
+            "fieldtype": "Table",
+            "label": "Messages",
+            "options": "Conversation Message"
+        },
+        {
+            "fieldname": "metadata",
+            "fieldtype": "JSON",
+            "label": "Metadata"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-01-24 10:46:06.408737",
+    "modified_by": "Administrator",
+    "module": "Chatbot",
+    "name": "Conversation",
+    "naming_rule": "By fieldname",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

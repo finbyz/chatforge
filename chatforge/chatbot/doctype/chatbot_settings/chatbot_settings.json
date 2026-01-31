@@ -1,0 +1,227 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:CBS-{#####}",
+ "creation": "2025-01-20 10:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "enabled",
+  "section_break_design",
+  "bot_name",
+  "bot_avatar",
+  "welcome_message",
+  "column_break_design",
+  "primary_color",
+  "secondary_color",
+  "widget_position",
+  "section_break_config",
+  "ai_agent",
+  "knowledge_base",
+  "system_prompt",
+  "website_url",
+  "sitemap_url",
+  "section_break_api",
+  "api_token",
+  "allowed_domains",
+  "section_break_stats",
+  "total_leads",
+  "total_sessions",
+  "total_messages",
+  "column_break_rlpu",
+  "lead_webhook_url",
+  "knowledge_tab",
+  "sitemap_urls"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "section_break_design",
+   "fieldtype": "Section Break",
+   "label": "Widget Design"
+  },
+  {
+   "fieldname": "bot_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Bot Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "bot_avatar",
+   "fieldtype": "Attach Image",
+   "label": "Bot Avatar"
+  },
+  {
+   "fieldname": "welcome_message",
+   "fieldtype": "Small Text",
+   "label": "Welcome Message"
+  },
+  {
+   "fieldname": "column_break_design",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "#4F46E5",
+   "fieldname": "primary_color",
+   "fieldtype": "Color",
+   "label": "Primary Color"
+  },
+  {
+   "default": "Bottom Right",
+   "fieldname": "widget_position",
+   "fieldtype": "Select",
+   "label": "Widget Position",
+   "options": "Bottom Right\nBottom Left"
+  },
+  {
+   "fieldname": "section_break_config",
+   "fieldtype": "Section Break",
+   "label": "AI Configuration"
+  },
+  {
+   "fieldname": "ai_agent",
+   "fieldtype": "Link",
+   "label": "AI Agent",
+   "options": "AI Agent"
+  },
+  {
+   "fieldname": "knowledge_base",
+   "fieldtype": "Link",
+   "label": "Knowledge Base",
+   "options": "Knowledge Base"
+  },
+  {
+   "fieldname": "system_prompt",
+   "fieldtype": "Small Text",
+   "label": "System Prompt"
+  },
+  {
+   "description": "Enter your website URL. This will be scraped to create the knowledge base and generate AI prompts.",
+   "fieldname": "website_url",
+   "fieldtype": "Data",
+   "label": "Website URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_api",
+   "fieldtype": "Section Break",
+   "label": "API & Access"
+  },
+  {
+   "fieldname": "api_token",
+   "fieldtype": "Data",
+   "label": "API Token",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "allowed_domains",
+   "fieldtype": "Table",
+   "label": "Allowed Domains",
+   "options": "Chatbot Allowed Domain"
+  },
+  {
+   "fieldname": "section_break_stats",
+   "fieldtype": "Section Break",
+   "label": "Statistics"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_sessions",
+   "fieldtype": "Int",
+   "label": "Total Sessions",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "total_messages",
+   "fieldtype": "Int",
+   "label": "Total Messages",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "total_leads",
+   "fieldtype": "Int",
+   "label": "Total Leads",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lead_webhook_url",
+   "fieldtype": "Small Text",
+   "label": "Lead Webhook URL"
+  },
+  {
+   "fieldname": "column_break_rlpu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sitemap_url",
+   "fieldtype": "Data",
+   "label": "Sitemap URL"
+  },
+  {
+   "fieldname": "sitemap_urls",
+   "fieldtype": "Table",
+   "label": "Sitemap Urls",
+   "options": "Chatbot Sitemap URL"
+  },
+  {
+   "fieldname": "knowledge_tab",
+   "fieldtype": "Tab Break",
+   "label": "Knowledge"
+  },
+  {
+   "default": "#4F46E5",
+   "fieldname": "secondary_color",
+   "fieldtype": "Color",
+   "label": "Secondary Color"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [
+  {
+   "link_doctype": "Chatbot Lead",
+   "link_fieldname": "bot_settings"
+  }
+ ],
+ "modified": "2026-01-28 13:00:35.498142",
+ "modified_by": "Administrator",
+ "module": "Chatbot",
+ "name": "Chatbot Settings",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
