@@ -245,3 +245,18 @@ scheduler_events = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+
+fixtures = [
+    {
+        "dt": "AI Agent",
+        "filters": [
+            ["name", "=", "Chatbot Prompt Generator"]
+        ],
+    },
+    {
+        "dt": "AI Tool",
+        "filters": [
+            ["name", "=", "Create Chatbot Lead"]
+        ],
+    }
+]
