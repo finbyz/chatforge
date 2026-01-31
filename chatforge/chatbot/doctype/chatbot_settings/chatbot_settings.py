@@ -5,6 +5,7 @@ Manages chatbot configuration, AI Agent creation, and Knowledge Base integration
 import frappe
 from frappe.model.document import Document
 import secrets
+from finbyzai.ai.agent.agent_service import AgentService
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -37,7 +38,7 @@ YOUR RESPONSIBILITIES (IN ORDER OF PRIORITY):
      • Email - "I'd love to share some additional resources - what's the best email to reach you?"
      • Company - "Are you exploring this for a particular company?"
    - Only ask for ONE detail per message, after you've answered their question
-   - Once you have name and email, use the 'create_chatbot_lead' tool
+   - Once you have name and email, use the 'Create Chatbot Lead' tool
 
 RESPONSE STRUCTURE:
 1. FIRST: Answer their question with helpful information from your Knowledge Base
@@ -60,386 +61,102 @@ IMPORTANT RULES:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class ChatbotSettings(Document):
-    
-    # ─────────────────────────────────────────────────────────────────────
-    # LIFECYCLE HOOKS
-    # ─────────────────────────────────────────────────────────────────────
-    
     def before_insert(self):
         if not self.api_token:
             self.api_token = secrets.token_urlsafe(32)
     
     def validate(self):
+        # Set default primary color
         if not self.primary_color:
             self.primary_color = DEFAULT_PRIMARY_COLOR
+
+        # Prevent name conflicts on new records
+        if self.is_new():
+            agent_exists = frappe.db.exists(
+                "AI Agent",
+                {"agent_name": self.bot_name}
+            )
+
+            kb_exists = frappe.db.exists(
+                "Knowledge Base",
+                {"title": f"{self.bot_name} Knowledge Base"}
+            )
+
+            if agent_exists or kb_exists:
+                frappe.throw(
+                    _("Chatbot name already exists. Please choose a different name.")
+                )
+
         self._clean_allowed_domains()
     
     def after_insert(self):
         """Setup chatbot on first creation."""
-        self._setup_chatbot()
+        self.setup_chatbot()
     
     def on_update(self):
         """Sync changes to linked AI Agent."""
         if self.is_new():
             return
+    
+    def setup_chatbot(self): 
+        self.create_knowledgebase_if_not_exist()
         
-        # Website URL changed - re-process everything
-        if self.has_value_changed("website_url") and self.website_url:
-            self._process_website()
+        self.create_agent_if_not_exist()
+        
+    def create_knowledgebase_if_not_exist(self):
+        if self.knowledge_base:
             return
-        
-        # Sync is_processed status from KB links to sitemap_urls
-        self._sync_kb_status()
-        
-        # Sync individual field changes to agent
-        self._sync_to_agent()
-    
-    # ─────────────────────────────────────────────────────────────────────
-    # CORE SETUP METHODS
-    # ─────────────────────────────────────────────────────────────────────
-    
-    def _setup_chatbot(self):
-        """Initial chatbot setup - process website or just create agent."""
+        if frappe.db.exists("Knowledge Base", frappe.scrub( f"{self.bot_name} Knowledge Base")):
+            self.knowledge_base = frappe.scrub(f"{self.bot_name} Knowledge Base")
+            return
+        kb_doc = frappe.get_doc({
+            "doctype": "Knowledge Base",
+            "title": f"{self.bot_name} Knowledge Base",
+            "vector_store": "ChromaDB",
+            "embeding_model": frappe.db.get_value(
+                "LLM", "gemini-embedding-001", "name"
+            ),
+            "provider": "Google",
+        })
+
         if self.website_url:
-            self._process_website()
-        else:
-            self._ensure_ai_agent()
-    
-    def _process_website(self):
-        """Scrape website, generate prompt, create KB, and setup agent."""
-        try:
-            from finbyzai.ai.utils.knowledge_base_utils import extract_text_from_web_url
-            
-            frappe.publish_realtime(
-                "msgprint",
-                {"message": "🔄 Extracting website content...", "title": "Processing"},
-                user=frappe.session.user
-            )
-            
-            # Extract content
-            success, content, error = extract_text_from_web_url(self.website_url)
-            if not success:
-                frappe.throw(f"Failed to extract website content: {error}")
-            
-            frappe.publish_realtime(
-                "msgprint",
-                {"message": "🤖 Generating AI prompt...", "title": "Processing"},
-                user=frappe.session.user
-            )
-            
-            website_data = {
-                "title": self.bot_name or "Business Website",
-                "content": content[:5000] if content else "",
+            kb_doc.append("links", {
                 "url": self.website_url
-            }
-            
-            # Generate prompt and setup KB + Agent
-            self.system_prompt = self._generate_system_prompt(website_data)
-            frappe.db.set_value("Chatbot Settings", self.name, "system_prompt", self.system_prompt)
-            
-            kb_name = self._ensure_knowledge_base(add_url=True)
-            self._ensure_ai_agent()
-            self._add_lead_tool_to_agent()
-            
-            frappe.msgprint("✅ Website processed! AI prompt generated and Knowledge Base created.")
-            
-        except Exception as e:
-            frappe.log_error(f"Website processing error: {str(e)}\n{frappe.get_traceback()}", "Chatbot SaaS")
-            frappe.throw(f"Failed to process website: {str(e)}")
-    
-    def _sync_to_agent(self):
-        """Sync field changes to linked AI Agent."""
-        if not self.ai_agent:
-            self._ensure_ai_agent()
+            })
+
+        kb_doc.insert(ignore_permissions=True)
+
+        self.knowledge_base = kb_doc.name
+        
+    def create_agent_if_not_exist(self):
+        if self.ai_agent: return
+        if frappe.db.exists("AI Agent", f"{self.bot_name} - AI Agent"):
+            self.ai_agent = f"{self.bot_name} - AI Agent"
             return
         
-        try:
-            if not frappe.db.exists("AI Agent", self.ai_agent):
-                self._ensure_ai_agent()
-                return
-            
-            agent_doc = frappe.get_doc("AI Agent", self.ai_agent)
-            needs_save = False
-            
-            if self.has_value_changed("system_prompt"):
-                self._update_agent_prompt(agent_doc)
-                needs_save = True
-            
-            if self.has_value_changed("knowledge_base"):
-                agent_doc.knowledge_base = self.knowledge_base or None
-                needs_save = True
-            
-            if needs_save:
-                agent_doc.save(ignore_permissions=True)
-                
-        except Exception as e:
-            frappe.log_error(f"Failed to sync AI Agent: {str(e)}", "Chatbot SaaS")
-    
-    def _sync_kb_status(self):
-        """Sync is_processed status from Knowledge Base links to sitemap_urls."""
-        if not self.knowledge_base or not self.sitemap_urls:
-            return
+        system_prompt_agent = frappe.get_doc("AI Agent", PROMPT_GENERATOR_AGENT)
+        system_prompt = system_prompt_agent.agent_service.invoke(**{
+            "url": self.website_url,
+        }) or FALLBACK_SYSTEM_PROMPT
+        self.system_prompt = system_prompt
         
-        try:
-            if not frappe.db.exists("Knowledge Base", self.knowledge_base):
-                return
-            
-            kb_doc = frappe.get_doc("Knowledge Base", self.knowledge_base)
-            
-            # Build a set of processed URLs from KB
-            kb_processed_urls = {link.url for link in (kb_doc.links or []) if link.is_processed}
-            
-            # Update sitemap_urls to match KB status
-            updated = False
-            for row in self.sitemap_urls:
-                should_be_processed = row.url in kb_processed_urls
-                if row.is_processed != should_be_processed:
-                    row.is_processed = 1 if should_be_processed else 0
-                    updated = True
-            
-            if updated:
-                # Use db.set_value to avoid recursion
-                for row in self.sitemap_urls:
-                    frappe.db.set_value(row.doctype, row.name, "is_processed", row.is_processed)
-                    
-        except Exception as e:
-            frappe.log_error(f"Failed to sync KB status: {str(e)}", "Chatbot SaaS")
+        agent_doc = frappe.get_doc({
+            "doctype": "AI Agent",
+            "title": f"{self.bot_name} - AI Agent",
+            "llm_provider": LLM_PROVIDER,
+            "llm": LLM_MODEL,
+            "agent_type": "ReAct Agent",
+            "knowledge_base": self.knowledge_base or None,
+        })
+        agent_doc.append("messages", {
+            "type": "system",
+            "content_type": "text",
+            "content": system_prompt
+        })
+        
+        agent_doc.insert()
+        self.ai_agent = agent_doc.name
     
-    # ─────────────────────────────────────────────────────────────────────
-    # KNOWLEDGE BASE METHODS
-    # ─────────────────────────────────────────────────────────────────────
-    
-    def _ensure_knowledge_base(self, add_url=False):
-        """Create or get existing Knowledge Base, optionally add website URL."""
-        try:
-            scrubbed_name = frappe.scrub(self.bot_name)
-            # Check both naming variants (with hyphen and underscore)
-            kb_name_hyphen = f"{scrubbed_name.replace('_', '-')}_knowledge-base"
-            kb_name_underscore = f"{scrubbed_name}_knowledge_base"
-            
-            kb_doc = None
-            kb_name = None
-            
-            # Try to find existing KB with either naming convention
-            if frappe.db.exists("Knowledge Base", kb_name_hyphen):
-                kb_name = kb_name_hyphen
-                kb_doc = frappe.get_doc("Knowledge Base", kb_name)
-            elif frappe.db.exists("Knowledge Base", kb_name_underscore):
-                kb_name = kb_name_underscore
-                kb_doc = frappe.get_doc("Knowledge Base", kb_name)
-            else:
-                # Create new KB - let Frappe auto-generate name from title
-                kb_doc = frappe.get_doc({
-                    "doctype": "Knowledge Base",
-                    "title": f"{self.bot_name} Knowledge Base",
-                    "vector_store": "ChromaDB",
-                    "embeding_model": frappe.db.get_value("LLM", "gemini-embedding-001", "name"),
-                    "provider": "Google",
-                })
-                kb_doc.insert(ignore_permissions=True)
-                kb_name = kb_doc.name
-            
-            # Add website URL if requested and not already present
-            if add_url and self.website_url:
-                url_exists = any(link.url == self.website_url for link in (kb_doc.links or []))
-                if not url_exists:
-                    kb_doc.append("links", {"url": self.website_url, "is_processed": 0})
-                    kb_doc.skip_processing = True
-                    kb_doc.save(ignore_permissions=True)
-                    
-                    frappe.enqueue(
-                        "finbyzai.ai.doctype.knowledge_base.knowledge_base._run_process_items",
-                        queue="long",
-                        kb_name=kb_name,
-                        timeout=3600
-                    )
-            
-            # Update self reference
-            self.knowledge_base = kb_name
-            frappe.db.set_value("Chatbot Settings", self.name, "knowledge_base", kb_name)
-            
-            return kb_name
-            
-        except frappe.exceptions.DuplicateEntryError:
-            # KB was created by another process, fetch it
-            kb_name = frappe.db.get_value("Knowledge Base", {"title": f"{self.bot_name} Knowledge Base"}, "name")
-            if kb_name:
-                self.knowledge_base = kb_name
-                frappe.db.set_value("Chatbot Settings", self.name, "knowledge_base", kb_name)
-                return kb_name
-            return None
-        except Exception as e:
-            frappe.log_error(f"KB creation error: {str(e)}", "Chatbot SaaS")
-            return None
-    
-    # ─────────────────────────────────────────────────────────────────────
-    # AI AGENT METHODS
-    # ─────────────────────────────────────────────────────────────────────
-    
-    def _ensure_ai_agent(self):
-        """Create or update the linked AI Agent."""
-        try:
-            if not frappe.db.exists("LLM Provider", LLM_PROVIDER):
-                frappe.throw(f"LLM Provider '{LLM_PROVIDER}' not found.")
-            if not frappe.db.exists("LLM", LLM_MODEL):
-                frappe.throw(f"LLM Model '{LLM_MODEL}' not found.")
-            
-            agent_title = f"{self.bot_name} - AI Agent"
-            existing_agent = frappe.db.get_value("AI Agent", {"title": agent_title}, "name")
-            
-            if existing_agent:
-                # Update existing agent
-                agent_doc = frappe.get_doc("AI Agent", existing_agent)
-                agent_doc.llm_provider = LLM_PROVIDER
-                agent_doc.llm = LLM_MODEL
-                agent_doc.agent_type = "ReAct Agent"
-                agent_doc.knowledge_base = self.knowledge_base or None
-                self._update_agent_prompt(agent_doc)
-                agent_doc.save(ignore_permissions=True)
-                self.ai_agent = agent_doc.name
-            else:
-                # Create new agent
-                agent_doc = frappe.get_doc({
-                    "doctype": "AI Agent",
-                    "title": agent_title,
-                    "llm_provider": LLM_PROVIDER,
-                    "llm": LLM_MODEL,
-                    "agent_type": "ReAct Agent",
-                    "knowledge_base": self.knowledge_base or None,
-                    "enable_memory": 0,
-                    "verbose_mode": 0,
-                })
-                
-                if self.system_prompt:
-                    agent_doc.append("messages", {
-                        "type": "system",
-                        "content_type": "text",
-                        "content": self.system_prompt
-                    })
-                
-                agent_doc.insert(ignore_permissions=True)
-                self._add_lead_tool_to_agent(agent_doc)
-                self.ai_agent = agent_doc.name
-            
-            frappe.db.set_value("Chatbot Settings", self.name, "ai_agent", self.ai_agent)
-            
-        except Exception as e:
-            frappe.log_error(f"Failed to create AI Agent: {str(e)}", "Chatbot SaaS")
-            frappe.throw(f"Failed to create AI Agent: {str(e)}")
-    
-    def _update_agent_prompt(self, agent_doc):
-        """Update system prompt in AI Agent's messages."""
-        agent_doc.messages = [msg for msg in agent_doc.messages if msg.type != "system"]
-        if self.system_prompt and self.system_prompt.strip():
-            agent_doc.append("messages", {
-                "type": "system",
-                "content_type": "text",
-                "content": self.system_prompt.strip()
-            })
-    
-    def _add_lead_tool_to_agent(self, agent_doc=None):
-        """Add lead creation tool to the AI Agent."""
-        try:
-            if not agent_doc:
-                if not self.ai_agent:
-                    return
-                agent_doc = frappe.get_doc("AI Agent", self.ai_agent)
-            
-            tool_name = "Create Chatbot Lead"
-            
-            # Ensure tool exists
-            if not frappe.db.exists("AI Tool", tool_name):
-                chatbot_module = self._ensure_chatbot_module()
-                frappe.get_doc({
-                    "doctype": "AI Tool",
-                    "name": tool_name,
-                    "description": "Create a Chatbot Lead with name, email, and company. Use when you have collected all three pieces of information.",
-                    "is_custom": 1,
-                    "from_package": "",
-                    "module": chatbot_module
-                }).insert(ignore_permissions=True)
-            
-            # CLEANUP: Remove invalid snake_case tool reference if present
-            # This fixes the LinkValidationError: Could not find Row #1: Tool: create_chatbot_lead
-            tools_modified = False
-            if agent_doc.get("tools"):
-                original_tools = agent_doc.tools
-                agent_doc.tools = [t for t in agent_doc.tools if t.tool != "create_chatbot_lead"]
-                if len(agent_doc.tools) != len(original_tools):
-                    tools_modified = True
-
-            # Add to agent if not already added
-            if not any(t.tool == tool_name for t in (agent_doc.tools or [])):
-                agent_doc.append("tools", {"tool": tool_name})
-                tools_modified = True
-            
-            if tools_modified:
-                agent_doc.save(ignore_permissions=True)
-                
-        except Exception as e:
-            frappe.log_error(f"Failed to add lead tool: {str(e)}", "Chatbot SaaS")
-    
-    def _ensure_chatbot_module(self):
-        """Ensure Chatbot module exists, create if not."""
-        module = frappe.db.get_value("Module Def", {"module_name": "Chatbot"}, "name")
-        if not module:
-            doc = frappe.get_doc({
-                "doctype": "Module Def",
-                "module_name": "Chatbot",
-                "app_name": "chatforge"
-            })
-            doc.insert(ignore_permissions=True)
-            module = doc.name
-        return module
-    
-    # ─────────────────────────────────────────────────────────────────────
-    # PROMPT GENERATION
-    # ─────────────────────────────────────────────────────────────────────
-    
-    def _generate_system_prompt(self, website_data):
-        """Generate AI system prompt using the Chatbot Prompt Generator agent."""
-        try:
-            from finbyzai.ai.agent.agent_service import AgentService
-            
-            if not frappe.db.exists("AI Agent", PROMPT_GENERATOR_AGENT):
-                return self._get_fallback_prompt(website_data.get("title", "our company"))
-            
-            agent_doc = frappe.get_doc("AI Agent", PROMPT_GENERATOR_AGENT)
-            
-            query = f"""WEBSITE INFORMATION:
-URL: {website_data.get('url', self.website_url)}
-Title: {website_data.get('title', 'N/A')}
-
-WEBSITE CONTENT:
-{website_data.get('content', '')[:4000]}"""
-            
-            response = AgentService(agent_doc).invoke(query=query)
-            
-            # Extract prompt from response
-            if isinstance(response, str):
-                generated = response.strip()
-            elif isinstance(response, dict):
-                generated = response.get("system_prompt") or response.get("output") or response.get("content", "")
-                generated = str(generated).strip()
-            else:
-                generated = str(response).strip()
-            
-            if not generated or len(generated) < 50:
-                return self._get_fallback_prompt(website_data.get("title", "our company"))
-            
-            return generated
-            
-        except Exception as e:
-            frappe.log_error(f"Prompt generation error: {str(e)}", "Chatbot SaaS")
-            return self._get_fallback_prompt(website_data.get("title", "our company"))
-    
-    def _get_fallback_prompt(self, business_name):
-        """Return fallback system prompt."""
-        return FALLBACK_SYSTEM_PROMPT.format(business_name=business_name)
-    
-    # ─────────────────────────────────────────────────────────────────────
-    # UTILITY METHODS
-    # ─────────────────────────────────────────────────────────────────────
     
     def _clean_allowed_domains(self):
         """Clean and normalize allowed domains."""
@@ -514,10 +231,6 @@ WEBSITE CONTENT:
                 in_sitemap = False
         return locs
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# STANDALONE WHITELISTED FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════════
 
 @frappe.whitelist()
 def fetch_sitemap_urls(docname, sitemap_url):
@@ -616,12 +329,6 @@ def process_selected_urls(docname):
         if not selected_urls:
             return {"success": False, "error": "No URLs selected for processing."}
         
-        # Ensure KB exists
-        if not doc.knowledge_base:
-            kb_name = doc._ensure_knowledge_base()
-            if not kb_name:
-                return {"success": False, "error": "Failed to create Knowledge Base."}
-        
         kb_doc = frappe.get_doc("Knowledge Base", doc.knowledge_base)
         existing_links = {link.url for link in (kb_doc.links or [])}
         added_count = 0
@@ -633,7 +340,6 @@ def process_selected_urls(docname):
             row.is_processed = 1
             row.is_selected = 0
         
-        kb_doc.skip_processing = True
         kb_doc.save(ignore_permissions=True)
         doc.save(ignore_permissions=True)
         
