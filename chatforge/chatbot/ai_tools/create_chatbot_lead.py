@@ -61,6 +61,23 @@ def create_chatbot_lead_tool(full_name: str, email: str, company_name: str = "")
         bot_settings = getattr(frappe.local, 'chatbot_bot_settings', None)
         conversation = getattr(frappe.local, 'chatbot_conversation', None)
         
+        # If bot_settings is not in context, try to find an active chatbot config
+        if not bot_settings:
+            bot_settings = frappe.db.get_value(
+                "Chatbot Settings", 
+                {"enabled": 1}, 
+                "name", 
+                order_by="creation desc"
+            )
+        
+        # If still no bot_settings, we cannot create the lead (required field)
+        if not bot_settings:
+            return json.dumps({
+                "success": False,
+                "error": "No active chatbot configuration found",
+                "message": "I'm having trouble saving your information. Please contact us directly."
+            })
+        
         # Check for existing lead with same email and bot_settings
         filters = {"email": email}
         if bot_settings:
@@ -81,11 +98,9 @@ def create_chatbot_lead_tool(full_name: str, email: str, company_name: str = "")
             "full_name": full_name,
             "email": email,
             "company_name": company_name,
-            "status": "New"
+            "status": "New",
+            "bot_settings": bot_settings
         }
-        
-        if bot_settings:
-            lead_data["bot_settings"] = bot_settings
         
         if conversation:
             lead_data["conversation"] = conversation

@@ -604,7 +604,7 @@ def sync_leads_to_webhooks():
         # Get all leads that haven't been sent to a webhook yet
         unsent_leads = frappe.get_all(
             "Chatbot Lead",
-            filters={"is_sent_to_webhook": 0},
+            filters={"issent_to_webhook": 0},
             fields=["name", "full_name", "email", "company_name", "notes", "bot_settings"],
             limit=20
         )
@@ -645,7 +645,7 @@ def sync_leads_to_webhooks():
                 
                 # 5. On success, mark as sent
                 if 200 <= response.status_code < 300:
-                    frappe.db.set_value("Chatbot Lead", lead.name, "is_sent_to_webhook", 1)
+                    frappe.db.set_value("Chatbot Lead", lead.name, "issent_to_webhook", 1)
                     frappe.db.commit()
                 else:
                     # Log failure but continue with next lead

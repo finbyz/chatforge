@@ -361,6 +361,8 @@
                         return;
                     }
 
+                    this.config.botName = cfg.bot_name || this.config.botName;
+                    this.config.welcomeMessage = cfg.welcome_message || this.config.welcomeMessage;
                     this.config.primaryColor = cfg.primary_color || this.config.primaryColor;
                     this.config.secondaryColor = cfg.secondary_color || cfg.primary_color || this.config.secondaryColor;
                     this.config.botAvatar = cfg.bot_avatar;
@@ -428,9 +430,14 @@
 
         updateAvatars() {
             if (!this.config.botAvatar) return;
-            const fullUrl = (this.config.host || '') + this.config.botAvatar;
-            const imgHtml = `<img src="${fullUrl}" alt="${this.config.botName}" />`;
 
+            let fullUrl = this.config.botAvatar;
+            // Only prepend host if it's a relative path and host exists
+            if (this.config.host && !fullUrl.startsWith('http')) {
+                fullUrl = this.config.host + fullUrl;
+            }
+
+            const imgHtml = `<img src="${fullUrl}" alt="${this.config.botName}" />`;
             this.elements.botAvatar.innerHTML = imgHtml;
         }
 
