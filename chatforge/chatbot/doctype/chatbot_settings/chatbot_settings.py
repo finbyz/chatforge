@@ -3,6 +3,7 @@ Chatbot Settings DocType
 Manages chatbot configuration, AI Agent creation, and Knowledge Base integration.
 """
 import frappe
+from frappe import _
 from frappe.model.document import Document
 import secrets
 from finbyzai.ai.agent.agent_service import AgentService

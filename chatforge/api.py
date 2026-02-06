@@ -114,7 +114,7 @@ def validate_domain(token):
     
     # Get allowed domains using SQL to bypass permissions
     allowed_domains = frappe.db.sql("""
-        SELECT domain FROM `tabAllowed Domains`
+        SELECT domain FROM `tabChatbot Allowed Domain`
         WHERE parent = %s
     """, (config_name,), as_list=True)
     allowed_domains = [d[0] for d in allowed_domains] if allowed_domains else []

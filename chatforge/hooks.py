@@ -150,11 +150,12 @@ app_license = "mit"
 # ---------------
 
 scheduler_events = {
-    "cron": {
-        "*/5 * * * *": [
-            "chatforge.api.sync_leads_to_webhooks"
-        ]
-    },
+    # Webhook sync disabled - uncomment below to re-enable
+    # "cron": {
+    #     "*/5 * * * *": [
+    #         "chatforge.api.sync_leads_to_webhooks"
+    #     ]
+    # },
     # "daily": [
     #     "chatforge.tasks.daily"
     # ],

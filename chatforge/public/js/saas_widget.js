@@ -117,9 +117,13 @@
                     this.saveConfig();
 
                     // Unlock visibility and show only after ALL config is applied correctly
-                    this.elements.container.style.setProperty('display', 'flex', 'important');
-                    this.elements.container.style.setProperty('opacity', '', '');
-                    this.elements.container.style.setProperty('visibility', '', '');
+                    // Must explicitly set values to override the !important inline styles
+                    this.elements.container.style.removeProperty('display');
+                    this.elements.container.style.removeProperty('opacity');
+                    this.elements.container.style.removeProperty('visibility');
+                    this.elements.container.style.display = 'flex';
+                    this.elements.container.style.opacity = '1';
+                    this.elements.container.style.visibility = 'visible';
 
                     // Trigger CSS animations
                     setTimeout(() => {
@@ -376,9 +380,13 @@
                     this.saveConfig();
 
                     // Unlock visibility and show only after ALL config is applied correctly
-                    this.elements.container.style.setProperty('display', 'flex', 'important');
-                    this.elements.container.style.setProperty('opacity', '', '');
-                    this.elements.container.style.setProperty('visibility', '', '');
+                    // Must explicitly set values to override the !important inline styles
+                    this.elements.container.style.removeProperty('display');
+                    this.elements.container.style.removeProperty('opacity');
+                    this.elements.container.style.removeProperty('visibility');
+                    this.elements.container.style.display = 'flex';
+                    this.elements.container.style.opacity = '1';
+                    this.elements.container.style.visibility = 'visible';
 
                     // Trigger CSS animations
                     setTimeout(() => {
