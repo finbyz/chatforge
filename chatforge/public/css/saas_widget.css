@@ -900,6 +900,8 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Mobile Responsive
    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Enhanced Mobile Support for All Devices (Android + iOS) */
 @media (max-width: 480px) {
     .saas-chatbot-container {
         bottom: 0;
@@ -909,29 +911,197 @@
         gap: 0;
     }
 
-    .saas-chatbot-container[data-position="left"] {
+    .saas-chatbot-container[data-position="left"],
+    .saas-chatbot-container[data-position="right"] {
         left: 0;
         right: 0;
     }
 
     .saas-chat-window {
         width: 100%;
+        width: 100vw;
         height: 100vh;
         height: 100dvh;
+        /* Dynamic viewport height for mobile browsers */
         max-height: 100vh;
+        max-height: 100dvh;
         border-radius: 0;
         position: fixed;
         inset: 0;
+        /* Support for safe areas (notch/home indicator) */
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .saas-chat-header {
+        padding-top: max(14px, env(safe-area-inset-top));
+    }
+
+    .saas-chat-messages {
+        /* Adjust padding for better mobile readability */
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .saas-message {
+        /* Larger max-width on mobile for better use of screen space */
+        max-width: 85%;
+    }
+
+    .saas-message-bubble {
+        /* Slightly larger font for mobile readability */
+        font-size: 15px;
+        padding: 12px 16px;
+    }
+
+    .saas-message-time {
+        font-size: 11px;
+    }
+
+    .saas-chat-input-area {
+        /* Better keyboard handling */
+        padding: 10px 12px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
+    .saas-chat-input {
+        /* Prevent zoom on focus in iOS */
+        font-size: 16px;
     }
 
     .saas-chat-fab {
         position: fixed;
         bottom: 20px;
+        bottom: max(20px, env(safe-area-inset-bottom, 20px));
+        /* Default right, but respect data-position */
         right: 20px;
+        left: auto;
+        width: 60px;
+        height: 60px;
     }
 
+    .saas-chatbot-container[data-position="left"] .saas-chat-fab {
+        right: auto;
+        left: 20px;
+    }
+
+    .saas-chat-fab svg {
+        width: 28px;
+        height: 28px;
+    }
+
+    /* Hide FAB when chat is open on mobile */
     .saas-chat-window.open~.saas-chat-fab {
         display: none;
+    }
+
+    /* Teaser adjustments for mobile */
+    .saas-teaser-bubble {
+        bottom: 95px;
+        /* Clear the larger mobile FAB */
+        bottom: max(95px, calc(env(safe-area-inset-bottom, 20px) + 75px));
+        /* Default right, but respect data-position */
+        right: 20px;
+        left: auto;
+        max-width: calc(100vw - 40px);
+        white-space: normal;
+        font-size: 14px;
+        padding: 10px 16px;
+        border-radius: 20px;
+        border-bottom-right-radius: 4px;
+        /* Default tail for right side */
+    }
+
+    .saas-chatbot-container[data-position="left"] .saas-teaser-bubble {
+        right: auto;
+        left: 20px;
+        border-bottom-right-radius: 20px;
+        border-bottom-left-radius: 4px;
+        /* Tail for left side */
+    }
+
+    .saas-teaser-content {
+        margin-right: 4px;
+        line-height: 1.4;
+    }
+}
+
+/* Tablet and medium screens */
+@media (min-width: 481px) and (max-width: 768px) {
+    .saas-chat-window {
+        width: 90vw;
+        max-width: 420px;
+        height: 70vh;
+        max-height: 650px;
+    }
+
+    .saas-message {
+        max-width: 80%;
+    }
+}
+
+/* Landscape mobile and short screens */
+@media (max-height: 600px) {
+    .saas-chat-window {
+        height: 100vh;
+        max-height: 100vh;
+    }
+
+    .saas-chat-header {
+        padding: 10px 14px;
+    }
+
+    .saas-bot-avatar {
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+    }
+
+    .saas-bot-details h4 {
+        font-size: 15px;
+    }
+
+    .saas-chat-messages {
+        padding: 10px;
+        gap: 10px;
+    }
+}
+
+/* Small Android phones (e.g. Samsung S8+ / 360px) */
+@media (max-width: 360px) {
+    .saas-message-bubble {
+        font-size: 14px;
+        padding: 10px 14px;
+    }
+
+    .saas-chat-fab {
+        width: 56px;
+        height: 56px;
+        bottom: 16px;
+        right: 16px;
+    }
+
+    .saas-chatbot-container[data-position="left"] .saas-chat-fab {
+        right: auto;
+        left: 16px;
+    }
+
+    .saas-chat-fab svg {
+        width: 26px;
+        height: 26px;
+    }
+
+    .saas-teaser-bubble {
+        bottom: 85px;
+        bottom: max(85px, calc(env(safe-area-inset-bottom, 20px) + 65px));
+        right: 16px;
+        left: auto;
+        font-size: 13px;
+        padding: 8px 12px;
+    }
+
+    .saas-chatbot-container[data-position="left"] .saas-teaser-bubble {
+        right: auto;
+        left: 16px;
     }
 }
 

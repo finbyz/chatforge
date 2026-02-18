@@ -326,6 +326,9 @@
                 if (this.state.history.length === 0) {
                     this.addMessage(this.config.welcomeMessage, 'bot');
                     this.showQuickReplies();
+                } else {
+                    // Scroll to latest messages when opening with existing history
+                    setTimeout(() => this.scrollToBottom(), 100);
                 }
                 setTimeout(() => this.elements.input.focus(), 350);
             }
@@ -588,6 +591,8 @@
             this.state.history.forEach(msg => {
                 this.addMessageToUI(msg.content, msg.sender === 'User' ? 'user' : 'bot', false);
             });
+            // Scroll to bottom after rendering all history
+            setTimeout(() => this.scrollToBottom(), 50);
         }
 
         async handleSend() {
@@ -671,13 +676,42 @@
             // No need to call saveMessageToServer separately to avoid duplicates
         }
 
+        formatDateTime(date) {
+            const now = new Date();
+            const messageDate = new Date(date);
+
+            // Reset time part for date comparison
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const msgDay = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
+            const diffTime = today - msgDay;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+            const timeStr = messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            if (diffDays === 0) {
+                // Today - just show time
+                return timeStr;
+            } else if (diffDays === 1) {
+                // Yesterday
+                return `Yesterday, ${timeStr}`;
+            } else if (diffDays < 7) {
+                // This week - show day name
+                const dayName = messageDate.toLocaleDateString([], { weekday: 'short' });
+                return `${dayName}, ${timeStr}`;
+            } else {
+                // Older - show date
+                const dateStr = messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                return `${dateStr}, ${timeStr}`;
+            }
+        }
+
         addMessageToUI(text, sender, animate = true) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `saas-message ${sender}`;
             if (!animate) msgDiv.style.animation = 'none';
 
             const now = new Date();
-            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const dateTimeStr = this.formatDateTime(now);
 
             // Render markdown for bot messages, plain text for user messages
             const messageContent = sender === 'bot' ? this.renderMarkdown(text) : this.escapeHtml(text);
@@ -687,7 +721,7 @@
                     ${messageContent}
                     ${sender === 'bot' ? '<button class="saas-copy-btn" title="Copy message" aria-label="Copy message">📋</button>' : ''}
                 </div>
-                <div class="saas-message-time">${timeStr}</div>
+                <div class="saas-message-time">${dateTimeStr}</div>
             `;
 
             this.elements.messages.appendChild(msgDiv);
@@ -761,7 +795,8 @@
             const replies = [
                 '👋 What can you do?',
                 '📋 Our Services',
-                '📞 Contact Us'
+                '📞 Contact Us',
+                'Our Products'
             ];
 
             this.elements.quickReplies.innerHTML = replies.map(r =>
