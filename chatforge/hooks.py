@@ -33,6 +33,10 @@ app_license = "mit"
 # web_include_css = "/assets/chatforge/css/saas_widget.css"
 # web_include_js = "/assets/chatforge/js/saas_widget.js"
 
+# Search Overlay - injected on all website pages
+web_include_css = "/assets/chatforge/css/search_overlay.css"
+web_include_js = "/assets/chatforge/js/search_overlay.js"
+
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "chatforge/public/scss/website"
 

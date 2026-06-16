@@ -16,6 +16,16 @@
   "primary_color",
   "secondary_color",
   "widget_position",
+  "website_search_tab",
+  "enable_website_search",
+  "website_search_agent",
+  "website_search_knowledge_base",
+  "website_search_result_limit",
+  "website_search_column_break",
+  "website_search_show_website_items",
+  "website_search_show_item_groups",
+  "website_search_show_blog_posts",
+  "website_search_show_web_pages",
   "section_break_config",
   "ai_agent",
   "knowledge_base",
@@ -87,6 +97,73 @@
    "fieldtype": "Select",
    "label": "Widget Position",
    "options": "Bottom Right\nBottom Left"
+  },
+  {
+   "fieldname": "website_search_tab",
+   "fieldtype": "Tab Break",
+   "label": "Website AI Search"
+  },
+  {
+   "default": "0",
+   "description": "Show the AI website search overlay when Website Settings navbar search is enabled.",
+   "fieldname": "enable_website_search",
+   "fieldtype": "Check",
+   "label": "Website Search"
+  },
+  {
+   "depends_on": "enable_website_search",
+   "fieldname": "website_search_agent",
+   "fieldtype": "Link",
+   "label": "Website Search Agent",
+   "options": "AI Agent"
+  },
+  {
+   "depends_on": "enable_website_search",
+   "description": "Knowledge base used by the website search agent for answer context.",
+   "fieldname": "website_search_knowledge_base",
+   "fieldtype": "Link",
+   "label": "Website Search Knowledge Base",
+   "options": "Knowledge Base"
+  },
+  {
+   "default": "9",
+   "depends_on": "enable_website_search",
+   "description": "Maximum number of results shown to visitors.",
+   "fieldname": "website_search_result_limit",
+   "fieldtype": "Int",
+   "label": "Result Limit"
+  },
+  {
+   "fieldname": "website_search_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "depends_on": "enable_website_search",
+   "fieldname": "website_search_show_website_items",
+   "fieldtype": "Check",
+   "label": "Show Website Items"
+  },
+  {
+   "default": "1",
+   "depends_on": "enable_website_search",
+   "fieldname": "website_search_show_item_groups",
+   "fieldtype": "Check",
+   "label": "Show Item Groups"
+  },
+  {
+   "default": "1",
+   "depends_on": "enable_website_search",
+   "fieldname": "website_search_show_blog_posts",
+   "fieldtype": "Check",
+   "label": "Show Blog Posts"
+  },
+  {
+   "default": "1",
+   "depends_on": "enable_website_search",
+   "fieldname": "website_search_show_web_pages",
+   "fieldtype": "Check",
+   "label": "Show Web Pages"
   },
   {
    "fieldname": "section_break_config",
