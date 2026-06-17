@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-06-10 11:55:05.596464",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "query",
+  "visitor_ip",
+  "results_count",
+  "session_id",
+  "ai_summary",
+  "ai_results"
+ ],
+ "fields": [
+  {
+   "fieldname": "query",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Search Query",
+   "reqd": 1
+  },
+  {
+   "fieldname": "visitor_ip",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Visitor IP"
+  },
+  {
+   "fieldname": "results_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Results Count"
+  },
+  {
+   "fieldname": "session_id",
+   "fieldtype": "Data",
+   "label": "Session ID"
+  },
+  {
+   "fieldname": "ai_summary",
+   "fieldtype": "Small Text",
+   "label": "AI Summary"
+  },
+  {
+   "fieldname": "ai_results",
+   "fieldtype": "Code",
+   "label": "AI Results",
+   "options": "JSON"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-17 05:54:50.512991",
+ "modified_by": "Administrator",
+ "module": "Chatbot",
+ "name": "Website Search Log",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
