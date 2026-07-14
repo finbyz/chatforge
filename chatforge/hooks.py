@@ -3,7 +3,7 @@ app_title = "Chatbot Saas"
 app_publisher = "finbyz"
 app_description = "A multi tenent chatbot SaaS"
 app_email = "info@finbyz.tech"
-app_license = "mit"
+app_license = "gpl-3.0"
 
 # Apps
 # ------------------
