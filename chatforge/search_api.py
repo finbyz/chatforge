@@ -38,7 +38,10 @@ def _domain_matches(host, configured):
 
 
 def _get_website_search_settings():
-    if not frappe.db.get_single_value("Website Settings", "navbar_search"):
+    if frappe.get_meta("Website Settings").has_field("navbar_search"):
+        if not frappe.db.get_single_value("Website Settings", "navbar_search"):
+            return None
+    else:
         return None
 
     host = _request_host()
