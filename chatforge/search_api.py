@@ -478,6 +478,10 @@ def search(query=None, fingerprint=None, session_id=None, use_cache=False):
                 }
                 
             agent_doc = frappe.get_doc("AI Agent", agent_name)
+            # The agent runs as Administrator for anonymous visitors, so it must not have tools
+            if agent_doc.get("tools"):
+                frappe.log_error(f"AI Agent '{agent_name}' has tools; website search refuses to run it for visitors", "Website Search API")
+                return {"success": False, "ai_summary": "Search is not available right now.", "results": []}
             if search_settings.website_search_knowledge_base:
                 agent_doc.knowledge_base = search_settings.website_search_knowledge_base
             agent_service = agent_doc.agent_service

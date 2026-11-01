@@ -752,25 +752,6 @@
             }
         }
 
-        async saveMessageToServer(text, sender) {
-            if (!this.config.token) return;
-
-            try {
-                await fetch(`${this.API_BASE}.save_message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        token: this.config.token,
-                        session_id: this.state.sessionId,
-                        message: text,
-                        sender: sender === 'user' ? 'User' : 'Bot'
-                    })
-                });
-            } catch (err) {
-                console.warn('Failed to save message:', err);
-            }
-        }
-
         showTyping() {
             this.state.isTyping = true;
             const typing = document.createElement('div');

@@ -233,12 +233,37 @@ class ChatbotSettings(Document):
         return locs
 
 
+def _get_public_url(url, timeout, max_redirects=3):
+    """GET a URL that must resolve to a public address (also checked on every redirect)."""
+    import requests
+    from frappe.utils.data import validate_egress_url
+
+    for _ in range(max_redirects + 1):
+        validate_egress_url(url)
+        response = requests.get(url, timeout=timeout, allow_redirects=False,
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; FinByzBot/1.0)'})
+        if response.is_redirect and response.headers.get("location"):
+            url = requests.compat.urljoin(url, response.headers["location"])
+            continue
+        return response
+    raise ValueError("Too many redirects")
+
+
 @frappe.whitelist()
 def fetch_sitemap_urls(docname, sitemap_url):
-    """Fetch URLs from sitemap and populate sitemap_urls child table."""
+    """Fetch URLs from sitemap and populate sitemap_urls child table.
+
+    The server makes these requests, so the caller needs write access to the Chatbot
+    Settings, and every URL must resolve to a public address (no internal network).
+    """
     import requests
     import xml.etree.ElementTree as ET
-    
+
+    if docname and frappe.db.exists("Chatbot Settings", docname):
+        frappe.has_permission("Chatbot Settings", "write", docname, throw=True)
+    else:
+        frappe.has_permission("Chatbot Settings", "write", throw=True)
+
     try:
         if not docname or not sitemap_url:
             return {"success": False, "error": "Document name and Sitemap URL required."}
@@ -253,9 +278,7 @@ def fetch_sitemap_urls(docname, sitemap_url):
         doc.sitemap_url = sitemap_url
         
         # Fetch and parse sitemap
-        response = requests.get(sitemap_url, timeout=60, headers={
-            'User-Agent': 'Mozilla/5.0 (compatible; FinByzBot/1.0)'
-        })
+        response = _get_public_url(sitemap_url, timeout=60)
         response.raise_for_status()
         root = ET.fromstring(response.content)
         
@@ -266,9 +289,7 @@ def fetch_sitemap_urls(docname, sitemap_url):
         if doc._is_sitemap_index(root):
             for sitemap_loc in doc._get_sitemap_locs(root):
                 try:
-                    child_resp = requests.get(sitemap_loc, timeout=30, headers={
-                        'User-Agent': 'Mozilla/5.0 (compatible; FinByzBot/1.0)'
-                    })
+                    child_resp = _get_public_url(sitemap_loc, timeout=30)
                     child_resp.raise_for_status()
                     child_root = ET.fromstring(child_resp.content)
                     urls_data.extend(doc._parse_urlset(child_root, namespaces))
@@ -319,7 +340,12 @@ def fetch_sitemap_urls(docname, sitemap_url):
 
 @frappe.whitelist()
 def process_selected_urls(docname):
-    """Process selected URLs from sitemap_urls child table."""
+    """Process selected URLs from sitemap_urls child table (needs write access to the settings)."""
+    if docname and frappe.db.exists("Chatbot Settings", docname):
+        frappe.has_permission("Chatbot Settings", "write", docname, throw=True)
+    else:
+        frappe.has_permission("Chatbot Settings", "write", throw=True)
+
     try:
         if not docname or not frappe.db.exists("Chatbot Settings", docname):
             return {"success": False, "error": "Invalid document."}

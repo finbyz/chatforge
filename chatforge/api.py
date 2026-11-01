@@ -11,6 +11,7 @@ Production-ready endpoints with:
 
 import frappe
 from frappe import _
+from frappe.rate_limiter import rate_limit
 import json
 import requests
 from urllib.parse import urlparse
@@ -194,7 +195,7 @@ def get_active_config():
     settings = frappe.db.get_value(
         "Chatbot Settings",
         {"enabled": 1},
-        ["name", "bot_name", "welcome_message", "primary_color", "secondary_color", "widget_position", "llm_provider", "llm_model", "api_token", "bot_avatar"],
+        ["name", "bot_name", "welcome_message", "primary_color", "secondary_color", "widget_position", "api_token", "bot_avatar"],
         as_dict=True,
         order_by="creation asc"
     )
@@ -206,82 +207,15 @@ def get_active_config():
     return settings
 
 
-@frappe.whitelist(allow_guest=True)
-def init_session(token=None, visitor_id=None, page_url=None, metadata=None):
-    """
-    Initialize a new chat session with full visitor data capture.
-    Returns session_id and bot configuration.
-    """
-    if not token:
-        return {"error": "Token required"}
-    
-    # Validate domain
-    is_valid, config_name, error = validate_domain(token)
-    if not is_valid and error:
-        frappe.local.response['http_status_code'] = 403
-        return {"error": error}
-    
-    config = get_config_doc(token)
-    if not config:
-        return {"error": "Invalid token"}
-    
-    # Generate session ID
-    import uuid
-    session_id = f"sess_{uuid.uuid4().hex[:16]}"
-    
-    # Capture visitor metadata
-    server_metadata = get_visitor_metadata()
-    
-    # Merge with client-provided metadata
-    try:
-        client_metadata = json.loads(metadata) if metadata else {}
-    except:
-        client_metadata = {}
-    
-    full_metadata = {**server_metadata, **client_metadata}
-    if page_url:
-        full_metadata["page_url"] = page_url
-    
-    # Build session data
-    session_data = {
-        "doctype": "Conversation",
-        "session_id": session_id,
-        "bot_settings": config.name,
-        "visitor_fingerprint": visitor_id or full_metadata.get("ip_address"),
-        "status": "Active"
-    }
-    
-    # Only add metadata field if it exists in the DocType
-    meta = frappe.get_meta("Conversation")
-    if meta.has_field("metadata"):
-        session_data["metadata"] = json.dumps(full_metadata)
-    
-    # Create session with all captured data
-    session = frappe.get_doc(session_data)
-    session.insert(ignore_permissions=True)
-    frappe.db.commit()
-    
-    # Update config statistics
-    update_config_stats(config.name)
-    
-    return {
-        "session_id": session_id,
-        "config": {
-            "bot_name": config.bot_name,
-            "bot_avatar": config.bot_avatar,
-            "welcome_message": config.welcome_message,
-            "primary_color": config.primary_color,
-            "position": config.widget_position
-        },
-        "visitor_data": {
-            "ip": full_metadata.get("ip_address"),
-            "device": full_metadata.get("device_type"),
-            "browser": full_metadata.get("browser")
-        }
-    }
+# Website visitors reach this through the Next.js proxy, so they all share one request IP:
+# limit each chat session, and cap the total per IP (site-wide for the website) to bound AI cost.
+MAX_QUERY_CHARS = 2000
+MAX_HISTORY_TURNS = 20
 
 
 @frappe.whitelist(allow_guest=True)
+@rate_limit(key="session_id", limit=30, seconds=10 * 60)
+@rate_limit(limit=300, seconds=60 * 60)
 def send_message(token=None, session_id=None, query=None, history=None, page_url=None):
     """
     Process a user message through the AI Agent.
@@ -297,6 +231,8 @@ def send_message(token=None, session_id=None, query=None, history=None, page_url
     try:
         if not token or not session_id or not query:
             return {"success": False, "response": "Missing parameters."}
+        if len(query) > MAX_QUERY_CHARS:
+            return {"success": False, "response": f"Please keep your message under {MAX_QUERY_CHARS} characters."}
         
         # Get config
         config = get_config_doc(token)
@@ -313,6 +249,9 @@ def send_message(token=None, session_id=None, query=None, history=None, page_url
                 chat_history = json.loads(history) if isinstance(history, str) else history
             except json.JSONDecodeError:
                 chat_history = []
+        if not isinstance(chat_history, list):
+            chat_history = []
+        chat_history = chat_history[-MAX_HISTORY_TURNS:]
         
         # Call AI Agent using linked AI Agent (pass session_id and history for context)
         ai_response = call_ai_agent(config, query, session_id=session_name, chat_history=chat_history)
@@ -344,24 +283,6 @@ def send_message(token=None, session_id=None, query=None, history=None, page_url
 
 
 @frappe.whitelist(allow_guest=True)
-def save_message(token=None, session_id=None, message=None, sender=None):
-    """
-    Save a single message to the session.
-    """
-    if not token or not session_id or not message or not sender:
-        return {"status": "error", "message": "Missing parameters"}
-    
-    config = get_config_doc(token)
-    if not config:
-        return {"status": "error", "message": "Invalid token"}
-    
-    session_name = ensure_session(session_id, config.name)
-    save_message_to_session(session_name, message, sender)
-    
-    return {"status": "success"}
-
-
-@frappe.whitelist(allow_guest=True)
 def get_history(token=None, session_id=None, limit=50):
     """
     Get chat history for a session.
@@ -373,8 +294,8 @@ def get_history(token=None, session_id=None, limit=50):
     if not config:
         return []
     
-    # Check if session exists
-    if not frappe.db.exists("Conversation", session_id):
+    # Only return a conversation that belongs to this token's bot
+    if frappe.db.get_value("Conversation", session_id, "bot_settings") != config.name:
         return []
     
     session = frappe.get_doc("Conversation", session_id)
@@ -433,11 +354,6 @@ def ensure_session(session_id, settings_name, page_url=None):
         return session_id # Fallback to return the ID anyway if it exists now
 
 
-def save_message_to_session(session_name, content, sender):
-    """Save a single message."""
-    save_message_batch(session_name, [{"content": content, "sender": sender}])
-
-
 def save_message_batch(session_name, messages):
     """
     Saves a batch of messages using raw SQL for maximum concurrency safety.
@@ -471,25 +387,6 @@ def save_message_batch(session_name, messages):
         # Truncate error for Error Log Title field (140 char limit fallback)
         err_msg = str(e)[:100]
         frappe.log_error(f"SQL Message Save Error: {err_msg}", "Chatbot SaaS")
-
-
-def update_config_stats(config_name):
-    """Update statistics on the config."""
-    try:
-        total_sessions = frappe.db.count("Conversation", {"bot_settings": config_name})
-        total_messages = frappe.db.sql("""
-            SELECT COUNT(m.name)
-            FROM `tabConversation Message` m
-            JOIN `tabConversation` s ON m.parent = s.name
-            WHERE s.bot_settings = %s
-        """, config_name)[0][0] or 0
-        
-        frappe.db.set_value("Chatbot Settings", config_name, {
-            "total_sessions": total_sessions,
-            "total_messages": total_messages
-        }, update_modified=False)
-    except Exception:
-        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════
