@@ -331,7 +331,9 @@ def create_crm_lead_tool(
             })
 
         full_name = full_name.strip()
-        company_name = (company_name or "").strip()
+        # Lead.company_name is mandatory here; the visitor's name also gives a
+        # sensible Customer if the Lead is converted later.
+        company_name = (company_name or "").strip() or full_name
         # Keep the number as the visitor gave it, minus the spacing they typed —
         # enquiries come from every country, so guessing a dialling code would
         # corrupt more numbers than it fixes.
