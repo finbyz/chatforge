@@ -1137,3 +1137,63 @@
 .saas-chatbot-container[data-theme="dark"] .saas-chat-input-area {
     background: #1E293B;
 }
+/* ─────────────────────────────────────────────────────────────────────────────
+   Host-page hardening
+   The widget runs inside other websites whose CSS (Tailwind/Bootstrap resets such as
+   `button { background-color: transparent; background-image: none }`, theme overrides,
+   !important utilities) must not change how it looks. These rules use the container's id
+   (#saas-chatbot, set by saas_widget.js) for higher specificity and set every property
+   those resets touch.
+   Sites can colour the send button without !important overrides:
+     .saas-chatbot-container { --saas-send-bg: #f97316; --saas-send-bg-image: linear-gradient(...); }
+   ───────────────────────────────────────────────────────────────────────────── */
+#saas-chatbot.saas-chatbot-container button {
+    -webkit-appearance: none;
+    appearance: none;
+    font-family: var(--saas-font);
+    letter-spacing: normal;
+    text-transform: none;
+    margin: 0;
+}
+
+#saas-chatbot.saas-chatbot-container .saas-send-btn {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background-color: var(--saas-send-bg, var(--saas-primary));
+    background-image: var(--saas-send-bg-image, none);
+    color: #ffffff;
+    opacity: 1;
+    visibility: visible;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* never animate the background: with a host override it faded in from transparent (white circle) */
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+}
+
+#saas-chatbot.saas-chatbot-container .saas-send-btn:disabled {
+    opacity: 0.5;
+}
+
+#saas-chatbot.saas-chatbot-container .saas-send-btn svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    fill: #ffffff;
+    color: #ffffff;
+    margin-left: 2px;
+}
+
+/* Touch screens keep :hover after a tap (the send button sits where the launcher was tapped),
+   so hover effects only apply on devices that can really hover. */
+@media (hover: none) {
+    #saas-chatbot.saas-chatbot-container .saas-send-btn:hover:not(:disabled),
+    #saas-chatbot.saas-chatbot-container .saas-chat-fab:hover {
+        transform: none;
+    }
+}
