@@ -734,6 +734,33 @@
     animation-delay: 0.3s;
 }
 
+/* "Thinking..." - a label with three small dots after it */
+.saas-typing-indicator.saas-thinking {
+    gap: 3px;
+}
+
+.saas-typing-indicator .saas-thinking-text {
+    font-family: var(--saas-font);
+    font-size: 13px;
+    font-style: normal;
+    color: var(--saas-text-secondary);
+    margin-right: 3px;
+}
+
+.saas-typing-indicator.saas-thinking span {
+    width: 4px;
+    height: 4px;
+    background: var(--saas-text-secondary);
+    align-self: flex-end;
+    margin-bottom: 5px;
+    animation-name: thinkingDots;
+}
+
+@keyframes thinkingDots {
+    0%, 60%, 100% { opacity: 0.25; }
+    30% { opacity: 1; }
+}
+
 @keyframes typingWave {
 
     0%,

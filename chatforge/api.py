@@ -521,12 +521,14 @@ def _kb_context(agent_doc, query, chat_history):
 
     lines = [
         "KNOWLEDGE BASE RESULTS for the visitor's latest message. The search has already been run "
-        "for you (you have no search tool). Use these for facts, and share only links listed here."
+        "for you (you have no search tool). Use these for facts, and share only links listed here, as "
+        "markdown links with a descriptive name. Never cite or number these results in your reply "
+        "(no [1], [2], source lists or footnotes)."
     ]
-    for i, r in enumerate(results or [], 1):
+    for r in results or []:
         url = (r.get("metadata") or {}).get("url") or ""
         content = (r.get("content") or "").strip()[:KB_RESULT_CHARS]
-        lines.append(f"[{i}] {url}\n{content}")
+        lines.append(f"Source: {url}\n{content}" if url else content)
     if len(lines) == 1:
         lines.append("(No matching Knowledge Base content was found.)")
     return "\n\n".join(lines)
