@@ -641,14 +641,14 @@
                 this.hideTyping();
                 const finalText = (done && done.response) || streamed || 'Sorry, I encountered an error. Please try again.';
                 if (bubble) {
-                    this.finishStreamingMessage(bubble, finalText);
+                    await this.finishStreamingMessage(bubble, finalText);
                 } else {
                     this.addMessage(finalText, 'bot');
                 }
             } catch (err) {
                 this.hideTyping();
                 if (bubble) {
-                    this.finishStreamingMessage(bubble, streamed);
+                    await this.finishStreamingMessage(bubble, streamed);
                 } else {
                     this.addMessage('Connection error. Please try again.', 'bot');
                 }
@@ -711,36 +711,106 @@
             return done;
         }
 
+        // Typing effect. The model often thinks for a few seconds and then sends the
+        // whole answer in a few large chunks, so rendering chunks as they arrive still
+        // looks like the reply "appears at once". Instead the text is revealed at a
+        // steady pace (at least TYPE_MIN_CPS characters a second, and any reply finishes
+        // within about TYPE_MAX_SECONDS) while more keeps arriving underneath.
         startStreamingMessage() {
             this.addMessageToUI('\u2026', 'bot', true);
-            return { el: this.elements.messages.lastElementChild, pending: null, text: '' };
+            const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            return {
+                el: this.elements.messages.lastElementChild,
+                target: '',
+                shown: 0,
+                raf: null,
+                last: 0,
+                instant: Boolean(reduceMotion),
+                done: null,
+            };
         }
 
         updateStreamingMessage(bubble, text) {
-            bubble.text = text;
-            if (bubble.pending) return;
-            bubble.pending = requestAnimationFrame(() => {
-                bubble.pending = null;
-                this.renderBubble(bubble.el, bubble.text);
+            bubble.target = text;
+            this.typeBubble(bubble);
+        }
+
+        typeBubble(bubble) {
+            const TYPE_MIN_CPS = 160;
+            const TYPE_MAX_SECONDS = 4;
+            if (bubble.instant) {
+                bubble.shown = bubble.target.length;
+                this.renderBubble(bubble.el, bubble.target);
                 this.scrollToBottom();
-            });
+                if (bubble.done) bubble.done();
+                return;
+            }
+            if (bubble.raf) return;
+            // A timer, not requestAnimationFrame: rAF stops entirely in hidden or
+            // background tabs, and the reply must still finish (and be saved) there.
+            bubble.last = performance.now();
+            const step = () => {
+                const now = performance.now();
+                const dt = Math.min(1, (now - bubble.last) / 1000);
+                bubble.last = now;
+                const rate = Math.max(TYPE_MIN_CPS, bubble.target.length / TYPE_MAX_SECONDS);
+                const next = Math.min(bubble.target.length, bubble.shown + Math.max(1, rate * dt));
+                const visible = this.typedSlice(bubble.target, Math.floor(next));
+                bubble.shown = Math.max(next, visible.length);
+                this.renderBubble(bubble.el, visible);
+                this.scrollToBottom();
+                if (bubble.shown < bubble.target.length) {
+                    bubble.raf = setTimeout(step, 30);
+                } else {
+                    bubble.raf = null;
+                    if (bubble.done) bubble.done();
+                }
+            };
+            bubble.raf = setTimeout(step, 30);
+        }
+
+        // The first n characters, never showing half a markdown link or an open **.
+        typedSlice(text, n) {
+            let cut = text.slice(0, n);
+            const open = cut.lastIndexOf('[');
+            if (open > cut.lastIndexOf(')')) {
+                const link = text.slice(open).match(/^\[[^\]]*\]\([^)]*\)/);
+                cut = link ? text.slice(0, open + link[0].length) : cut.slice(0, open);
+            }
+            cut = cut.replace(/(^|[^*])\*$/, '$1');
+            if ((cut.match(/\*\*/g) || []).length % 2) cut = cut.endsWith('**') ? cut.slice(0, -2) : cut + '**';
+            return cut;
         }
 
         finishStreamingMessage(bubble, text) {
-            if (bubble.pending) cancelAnimationFrame(bubble.pending);
-            bubble.pending = null;
-            if (!text || !text.trim()) {
-                bubble.el.remove();
-                return;
-            }
-            this.renderBubble(bubble.el, text);
-            this.state.history.push({
-                content: text,
-                sender: 'Bot',
-                timestamp: new Date().toISOString()
+            return new Promise((resolve) => {
+                const finalize = () => {
+                    bubble.done = null;
+                    if (bubble.raf) clearTimeout(bubble.raf);
+                    bubble.raf = null;
+                    if (!text || !text.trim()) {
+                        bubble.el.remove();
+                        resolve();
+                        return;
+                    }
+                    this.renderBubble(bubble.el, text);
+                    this.state.history.push({
+                        content: text,
+                        sender: 'Bot',
+                        timestamp: new Date().toISOString()
+                    });
+                    this.saveHistoryToStorage();
+                    this.scrollToBottom();
+                    resolve();
+                };
+                bubble.target = text || '';
+                if (!text || !text.trim() || bubble.shown >= bubble.target.length || document.hidden) {
+                    finalize();
+                    return;
+                }
+                bubble.done = finalize;
+                this.typeBubble(bubble);
             });
-            this.saveHistoryToStorage();
-            this.scrollToBottom();
         }
 
         renderBubble(msgDiv, text) {
