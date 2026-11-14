@@ -213,6 +213,49 @@ MAX_QUERY_CHARS = 2000
 MAX_HISTORY_TURNS = 20
 
 
+def _prepare_turn(token, session_id, query, history, page_url):
+    """Validate a chat request and open its session.
+
+    Returns (config, session_name, chat_history), or a response dict when the request is refused.
+    """
+    if not token or not session_id or not query:
+        return {"success": False, "response": "Missing parameters."}
+    if len(query) > MAX_QUERY_CHARS:
+        return {"success": False, "response": f"Please keep your message under {MAX_QUERY_CHARS} characters."}
+
+    config = get_config_doc(token)
+    if not config:
+        return {"success": False, "response": "Invalid token."}
+
+    # Ensure session exists (Hardened for concurrency)
+    session_name = ensure_session(session_id, config.name, page_url)
+
+    chat_history = []
+    if history:
+        try:
+            chat_history = json.loads(history) if isinstance(history, str) else history
+        except json.JSONDecodeError:
+            chat_history = []
+    if not isinstance(chat_history, list):
+        chat_history = []
+    return config, session_name, chat_history[-MAX_HISTORY_TURNS:]
+
+
+def _finish_turn(config, session_name, query, ai_response):
+    """Save both messages and bump the stats (the widget no longer calls save_message)."""
+    try:
+        save_message_batch(session_name, [
+            {"content": query, "sender": "User"},
+            {"content": str(ai_response), "sender": "Bot"}
+        ])
+        frappe.db.set_value("Chatbot Settings", config.name, {
+            "total_messages": (config.total_messages or 0) + 2
+        }, update_modified=False)
+        frappe.db.commit()
+    except Exception as e:
+        frappe.log_error(f"Post-AI update error: {str(e)}", "Chatbot SaaS")
+
+
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="session_id", limit=30, seconds=10 * 60)
 @rate_limit(limit=300, seconds=60 * 60)
@@ -220,7 +263,7 @@ def send_message(token=None, session_id=None, query=None, history=None, page_url
     """
     Process a user message through the AI Agent.
     Returns AI response with full context.
-    
+
     Args:
         token: API token for the chatbot
         session_id: Session identifier
@@ -229,57 +272,77 @@ def send_message(token=None, session_id=None, query=None, history=None, page_url
         page_url: URL of the page where chat is happening
     """
     try:
-        if not token or not session_id or not query:
-            return {"success": False, "response": "Missing parameters."}
-        if len(query) > MAX_QUERY_CHARS:
-            return {"success": False, "response": f"Please keep your message under {MAX_QUERY_CHARS} characters."}
-        
-        # Get config
-        config = get_config_doc(token)
-        if not config:
-            return {"success": False, "response": "Invalid token."}
-        
-        # Ensure session exists (Hardened for concurrency)
-        session_name = ensure_session(session_id, config.name, page_url)
-        
-        # Parse chat history from JSON string
-        chat_history = []
-        if history:
-            try:
-                chat_history = json.loads(history) if isinstance(history, str) else history
-            except json.JSONDecodeError:
-                chat_history = []
-        if not isinstance(chat_history, list):
-            chat_history = []
-        chat_history = chat_history[-MAX_HISTORY_TURNS:]
-        
-        # Call AI Agent using linked AI Agent (pass session_id and history for context)
+        prepared = _prepare_turn(token, session_id, query, history, page_url)
+        if isinstance(prepared, dict):
+            return prepared
+        config, session_name, chat_history = prepared
+
         ai_response = call_ai_agent(config, query, session_id=session_name, chat_history=chat_history)
-        
-        # Save messages and update stats (only once - widget no longer calls save_message)
-        try:
-            save_message_batch(session_name, [
-                {"content": query, "sender": "User"},
-                {"content": str(ai_response), "sender": "Bot"}
-            ])
-            
-            # Atomic update for stats on the config
-            frappe.db.set_value("Chatbot Settings", config.name, {
-                "total_messages": (config.total_messages or 0) + 2
-            }, update_modified=False)
-            frappe.db.commit()
-        except Exception as e:
-            frappe.log_error(f"Post-AI update error: {str(e)}", "Chatbot SaaS")
-        
+        _finish_turn(config, session_name, query, ai_response)
+
         return {
             "success": True,
             "response": ai_response,
             "session_id": session_id
         }
-            
+
     except Exception as e:
         frappe.log_error(f"send_message error: {str(e)}\n{frappe.get_traceback()}", "Chatbot SaaS")
         return {"success": False, "response": "An error occurred."}
+
+
+STREAM_HEADERS = {
+    "Cache-Control": "no-store",
+    # nginx (ERP and website) must pass each line through as it is written
+    "X-Accel-Buffering": "no",
+}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(key="session_id", limit=30, seconds=10 * 60)
+@rate_limit(limit=300, seconds=60 * 60)
+def send_message_stream(token=None, session_id=None, query=None, history=None, page_url=None):
+    """Same as send_message, but the reply is streamed as it is written.
+
+    The body is newline-delimited JSON: {"type": "delta", "text": ...} lines while the
+    model writes, then one {"type": "done", "success", "response", "session_id"} line
+    carrying the full reply (which is what gets saved). Frappe keeps the request's
+    site and database open until the body has been sent, so the generator can still
+    save messages and create leads.
+    """
+    from werkzeug.wrappers import Response
+
+    def line(event):
+        return json.dumps(event, ensure_ascii=False) + "\n"
+
+    try:
+        prepared = _prepare_turn(token, session_id, query, history, page_url)
+    except Exception as e:
+        frappe.log_error(f"send_message_stream error: {str(e)}\n{frappe.get_traceback()}", "Chatbot SaaS")
+        prepared = {"success": False, "response": "An error occurred."}
+    if isinstance(prepared, dict):
+        return Response(line({"type": "done", **prepared}), mimetype="application/x-ndjson", headers=STREAM_HEADERS)
+
+    config, session_name, chat_history = prepared
+
+    def events():
+        parts = []
+        success = True
+        try:
+            for delta in _reply_deltas(config, query, session_name, chat_history):
+                parts.append(delta)
+                yield line({"type": "delta", "text": delta})
+        except Exception as e:
+            frappe.log_error(f"send_message_stream error: {str(e)}\n{frappe.get_traceback()}", "Chatbot SaaS")
+            success = bool(parts)
+        final = "".join(parts).strip()
+        if not final:
+            final = "I'm having trouble with the AI service. Please try again later." if not success else \
+                "I'm sorry, I couldn't generate a response. Please try again."
+        _finish_turn(config, session_name, query, final)
+        yield line({"type": "done", "success": success, "response": final, "session_id": session_id})
+
+    return Response(events(), mimetype="application/x-ndjson", headers=STREAM_HEADERS)
 
 
 @frappe.whitelist(allow_guest=True)
@@ -393,7 +456,152 @@ def save_message_batch(session_name, messages):
 # AI INTEGRATION - DIRECT & ROBUST
 # ═══════════════════════════════════════════════════════════════════════════
 
+KB_RESULTS = 5
+KB_RESULT_CHARS = 1500
+MAX_TOOL_ROUNDS = 4
+
+
 def call_ai_agent(config, query, session_id=None, chat_history=None):
+    """Reply to one chat message (the whole text at once). See _reply_deltas."""
+    return "".join(_reply_deltas(config, query, session_id, chat_history)).strip() or \
+        "I'm sorry, I couldn't generate a response. Please try again."
+
+
+def _reply_deltas(config, query, session_id=None, chat_history=None):
+    """Yield the reply as it is written.
+
+    Fast path: search the Knowledge Base first and give the results to the model, so a
+    normal reply is one model call instead of two (decide to search, then answer), and
+    stream the model's text. If anything fails before the first word, fall back to the
+    AI Agent's own loop (_call_ai_agent_legacy) so the visitor still gets an answer.
+    """
+    started = False
+    try:
+        for delta in _stream_reply(config, query, session_id, chat_history):
+            started = True
+            yield delta
+    except Exception:
+        if started:
+            raise
+        frappe.log_error(f"Chatbot fast path failed, using the agent loop\n{frappe.get_traceback()}", "Chatbot SaaS")
+        yield _call_ai_agent_legacy(config, query, session_id=session_id, chat_history=chat_history)
+
+
+def _agent_supports_fast_path(agent_doc):
+    return not agent_doc.get("output_schema") and agent_doc.agent_type in (
+        "ReAct Agent", "Conversational Agent", "Structured Chat Agent"
+    )
+
+
+def _system_prompt(agent_doc):
+    parts = [
+        (m.content or "").strip()
+        for m in agent_doc.messages or []
+        if (m.get("type") or "system").lower() == "system" and (m.get("content_type") or "text") == "text"
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+def _kb_context(agent_doc, query, chat_history):
+    """Knowledge Base results for this message, as a note for the model (None without a KB)."""
+    if not agent_doc.knowledge_base:
+        return None
+    search = query
+    if len(query.split()) < 6:
+        # "tell me more", "price?" - search with the previous question as well
+        previous = next((m.get("content") for m in reversed(chat_history or []) if m.get("role") == "user"), None)
+        if previous:
+            search = f"{previous}\n{query}"
+    try:
+        store = frappe.get_doc("Knowledge Base", agent_doc.knowledge_base).get_vector_store()
+        results = store.search(search, k=KB_RESULTS)
+    except Exception:
+        frappe.log_error(f"Chatbot Knowledge Base search failed\n{frappe.get_traceback()}", "Chatbot SaaS")
+        return None
+
+    lines = [
+        "KNOWLEDGE BASE RESULTS for the visitor's latest message. The search has already been run "
+        "for you (you have no search tool). Use these for facts, and share only links listed here."
+    ]
+    for i, r in enumerate(results or [], 1):
+        url = (r.get("metadata") or {}).get("url") or ""
+        content = (r.get("content") or "").strip()[:KB_RESULT_CHARS]
+        lines.append(f"[{i}] {url}\n{content}")
+    if len(lines) == 1:
+        lines.append("(No matching Knowledge Base content was found.)")
+    return "\n\n".join(lines)
+
+
+def _chunk_text(chunk):
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") for part in content if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return ""
+
+
+def _stream_reply(config, query, session_id=None, chat_history=None):
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+    if not config.ai_agent:
+        yield "AI Agent not configured. Please ensure the chatbot config has a linked AI Agent."
+        return
+
+    original_user = frappe.session.user
+    frappe.set_user("Administrator")  # guest visitors need the agent's keys and KB
+    frappe.local.chatbot_bot_settings = config.name
+    if session_id:
+        frappe.local.chatbot_conversation = session_id
+    try:
+        agent_doc = frappe.get_doc("AI Agent", config.ai_agent)
+        if not _agent_supports_fast_path(agent_doc):
+            raise ValueError(f"AI Agent type {agent_doc.agent_type} uses the agent loop")
+        service = agent_doc.agent_service
+        tools = [t for t in service.get_tools() if t.name != "kb_search"]
+        llm = service.get_llm()
+        model = llm.bind_tools(tools) if tools else llm
+        tools_by_name = {t.name: t for t in tools}
+
+        messages = [SystemMessage(content=_system_prompt(agent_doc))]
+        context = _kb_context(agent_doc, query, chat_history)
+        if context:
+            messages.append(SystemMessage(content=context))
+        for m in chat_history or []:
+            content = (m.get("content") or "").strip()
+            if content:
+                messages.append(HumanMessage(content=content) if m.get("role") == "user" else AIMessage(content=content))
+        messages.append(HumanMessage(content=query))
+
+        for _ in range(MAX_TOOL_ROUNDS):
+            merged = None
+            for chunk in model.stream(messages):
+                merged = chunk if merged is None else merged + chunk
+                text = _chunk_text(chunk)
+                if text:
+                    yield text
+            calls = (getattr(merged, "tool_calls", None) or []) if merged is not None else []
+            if not calls:
+                return
+            messages.append(AIMessage(content=merged.content or "", tool_calls=calls))
+            for call in calls:
+                tool = tools_by_name.get(call.get("name"))
+                try:
+                    result = tool.invoke(call.get("args") or {}) if tool else f"Unknown tool {call.get('name')}"
+                except Exception as e:
+                    frappe.log_error(f"Chatbot tool {call.get('name')} failed\n{frappe.get_traceback()}", "Chatbot SaaS")
+                    result = f"Tool error: {e}"
+                messages.append(ToolMessage(content=str(result), tool_call_id=call.get("id") or call.get("name") or "tool"))
+    finally:
+        for attr in ("chatbot_bot_settings", "chatbot_conversation"):
+            if hasattr(frappe.local, attr):
+                delattr(frappe.local, attr)
+        frappe.set_user(original_user)
+
+
+def _call_ai_agent_legacy(config, query, session_id=None, chat_history=None):
     """
     Invokes AI using the linked AI Agent DocType.
     Passes chat history to enable conversational memory across messages.

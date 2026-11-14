@@ -597,7 +597,7 @@
 
         async handleSend() {
             const text = this.elements.input.value.trim();
-            if (!text || this.state.isTyping) return;
+            if (!text || this.state.isTyping || this.state.isStreaming) return;
 
             // Clear input
             this.elements.input.value = '';
@@ -612,20 +612,143 @@
             // Show typing
             this.showTyping();
 
+            // Stream the reply so it appears as it is written; fall back to the
+            // one-shot endpoint when streaming is unavailable.
+            let bubble = null;
+            let streamed = '';
+            this.state.isStreaming = true;
             try {
-                const response = await this.sendToAI(text);
-                this.hideTyping();
+                const done = await this.sendToAIStream(text, (delta) => {
+                    streamed += delta;
+                    if (!bubble) {
+                        this.hideTyping();
+                        bubble = this.startStreamingMessage();
+                    }
+                    this.updateStreamingMessage(bubble, streamed);
+                });
 
-                if (response.success) {
-                    this.addMessage(response.response, 'bot');
+                if (done === null && !bubble) {
+                    const response = await this.sendToAI(text);
+                    this.hideTyping();
+                    if (response.success) {
+                        this.addMessage(response.response, 'bot');
+                    } else {
+                        this.addMessage(response.response || 'Sorry, I encountered an error. Please try again.', 'bot');
+                    }
+                    return;
+                }
+
+                this.hideTyping();
+                const finalText = (done && done.response) || streamed || 'Sorry, I encountered an error. Please try again.';
+                if (bubble) {
+                    this.finishStreamingMessage(bubble, finalText);
                 } else {
-                    this.addMessage(response.response || 'Sorry, I encountered an error. Please try again.', 'bot');
+                    this.addMessage(finalText, 'bot');
                 }
             } catch (err) {
                 this.hideTyping();
-                this.addMessage('Connection error. Please try again.', 'bot');
+                if (bubble) {
+                    this.finishStreamingMessage(bubble, streamed);
+                } else {
+                    this.addMessage('Connection error. Please try again.', 'bot');
+                }
                 console.error('Send error:', err);
+            } finally {
+                this.state.isStreaming = false;
             }
+        }
+
+        async sendToAIStream(query, onDelta) {
+            // Returns the final {type: "done", ...} event, or null when the server does
+            // not stream (older server, proxy error) so the caller can fall back.
+            const formattedHistory = this.state.history.slice(-10).map(msg => ({
+                role: msg.sender === 'User' ? 'user' : 'bot',
+                content: msg.content
+            }));
+            const formData = new URLSearchParams({
+                token: this.config.token || '',
+                session_id: this.state.sessionId,
+                query: query,
+                history: JSON.stringify(formattedHistory)
+            });
+
+            let response;
+            try {
+                response = await fetch(`${this.API_BASE}.send_message_stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+            } catch (err) {
+                return null;
+            }
+            const type = response.headers.get('content-type') || '';
+            if (!response.ok || !response.body || !type.includes('ndjson')) return null;
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let done = null;
+            const handle = (line) => {
+                line = line.trim();
+                if (!line) return;
+                let event;
+                try { event = JSON.parse(line); } catch (e) { return; }
+                if (event.type === 'delta' && event.text) onDelta(event.text);
+                else if (event.type === 'done') done = event;
+            };
+            while (true) {
+                const { value, done: finished } = await reader.read();
+                if (finished) break;
+                buffer += decoder.decode(value, { stream: true });
+                let newline;
+                while ((newline = buffer.indexOf('\n')) >= 0) {
+                    handle(buffer.slice(0, newline));
+                    buffer = buffer.slice(newline + 1);
+                }
+            }
+            handle(buffer + decoder.decode());
+            return done;
+        }
+
+        startStreamingMessage() {
+            this.addMessageToUI('\u2026', 'bot', true);
+            return { el: this.elements.messages.lastElementChild, pending: null, text: '' };
+        }
+
+        updateStreamingMessage(bubble, text) {
+            bubble.text = text;
+            if (bubble.pending) return;
+            bubble.pending = requestAnimationFrame(() => {
+                bubble.pending = null;
+                this.renderBubble(bubble.el, bubble.text);
+                this.scrollToBottom();
+            });
+        }
+
+        finishStreamingMessage(bubble, text) {
+            if (bubble.pending) cancelAnimationFrame(bubble.pending);
+            bubble.pending = null;
+            if (!text || !text.trim()) {
+                bubble.el.remove();
+                return;
+            }
+            this.renderBubble(bubble.el, text);
+            this.state.history.push({
+                content: text,
+                sender: 'Bot',
+                timestamp: new Date().toISOString()
+            });
+            this.saveHistoryToStorage();
+            this.scrollToBottom();
+        }
+
+        renderBubble(msgDiv, text) {
+            const bubbleEl = msgDiv && msgDiv.querySelector('.saas-message-bubble');
+            if (!bubbleEl) return;
+            bubbleEl.innerHTML = `${this.renderMarkdown(text)}<button class="saas-copy-btn" title="Copy message" aria-label="Copy message">📋</button>`;
+            const copyBtn = bubbleEl.querySelector('.saas-copy-btn');
+            if (copyBtn) copyBtn.addEventListener('click', () => this.copyMessage(text, copyBtn));
         }
 
         async sendToAI(query) {
